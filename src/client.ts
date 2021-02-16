@@ -1,5 +1,10 @@
-import { WebSocketPort, WebSocketEndpoint, HistoryEndpoint } from './info.ts';
+import {
+	WebSocketPort, WebSocketEndpoint,
+	HistoryEndpoint, SyncedStateEndpoint
+} from './info.ts';
 import { Message } from './common.ts';
+import * as Actions from './actions.ts';
+import { EmptySyncedState, performOne, SyncedState } from "./logic.ts";
 
 const host = `localhost:${WebSocketPort}`;
 
@@ -8,10 +13,26 @@ const $messageForm = document.getElementById('$messageForm') as HTMLElement;
 const $name = document.getElementById('$name') as HTMLInputElement;
 const $message = document.getElementById('$message') as HTMLInputElement;
 
+let syncedState: SyncedState = EmptySyncedState;
+
 function addMessage(m: Message) {
 	const el = document.createElement('div');
 	el.innerHTML = `<b>${m.name}</b>: ${m.message}`;
 	$history.appendChild(el);
+}
+
+function broadcast(action: Actions.Action) {
+	socket.send(JSON.stringify(action));
+}
+
+function renderState() {
+	$history.textContent = '';
+	for (const s of syncedState.messages) {
+		addMessage({
+			name: 'Unknown',
+			message: s,
+		});
+	}
 }
 
 let socket = new WebSocket(`ws://${host}/${WebSocketEndpoint}`);
@@ -23,10 +44,11 @@ socket.onerror = e => {
 	console.warn(e);
 };
 socket.onmessage = e => {
-	const mes: Message = JSON.parse(e.data);
-	console.log(`Received via WebSocket: "${mes}"`);
+	const action = JSON.parse(e.data) as Actions.Action;
+	console.log(`Received via WebSocket: "${action}"`);
 
-	addMessage(mes);
+	if (performOne(syncedState, action));
+		renderState();
 };
 
 $messageForm.onsubmit = (e: Event) => {
@@ -37,19 +59,18 @@ $messageForm.onsubmit = (e: Event) => {
 		message: $message.value
 	};
 	console.log('Submitting:', mes);
+
+	broadcast(Actions.addMessage($message.value));
 	
-	socket.send(JSON.stringify(mes));
+	//socket.send(JSON.stringify(mes));
 	$message.value = '';
 };
 
-async function loadInitialHistory() {
-	const res = await fetch(`http://${host}/${HistoryEndpoint}`, {
-	});
-	const initialHistory: Message[] = await res.json();
-	for (const mes of initialHistory) {
-		addMessage(mes);
-	}
+async function loadInitialState() {
+	const res = await fetch(`http://${host}/${SyncedStateEndpoint}`);
+	syncedState = await res.json() as SyncedState;
+	renderState();
 };
-loadInitialHistory();
+loadInitialState();
 
 export {};

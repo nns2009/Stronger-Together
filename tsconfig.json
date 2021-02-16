@@ -6,6 +6,7 @@
 		"strict": true,
 		"noImplicitReturns": true,
 		"noImplicitAny": true,
+		"strictNullChecks": true,
 		"module": "es6",
 		"moduleResolution": "node",
 		"target": "es2020",

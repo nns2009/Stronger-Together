@@ -1,11 +1,12 @@
+import { serialize, deserialize } from './serialization.ts';
+import { saveString, loadString } from './clientStorage.ts';
 import {
-	WebSocketPort, WebSocketEndpoint,
-	HistoryEndpoint, SyncedStateEndpoint
+	WebSocketPort, WebSocketEndpoint
 } from './info.ts';
-import { assertNever, Message } from './common.ts';
+import { assertNever } from './common.ts';
 import * as Commands from './commands.ts';
 import * as Actions from './actions.ts';
-import { EmptySyncedState, performOne, SyncedState } from "./logic.ts";
+import { EmptySyncedState, performOneClient, SyncedState } from "./logic.ts";
 
 const host = `localhost:${WebSocketPort}`;
 
@@ -17,7 +18,7 @@ function sendString(s: string) {
 	socket.send(s);
 }
 function sendCommand(command: Commands.ServerCommand) {
-	const str = JSON.stringify(command);
+	const str = serialize(command);
 	sendString(str);
 }
 function sendAction(action: Actions.Action) {
@@ -35,14 +36,6 @@ function elementById(id: string) {
 }
 function inputById(id: string) {
 	return tagById<HTMLInputElement>(id);
-}
-
-// ----- ----- ----- Storage ----- ----- -----
-function saveString(key: string, value: string) {
-	localStorage.setItem(key, value);
-}
-function loadString(key: string): string | undefined {
-	return localStorage.getItem(key);
 }
 
 // ----- ----- ----- Log in form ----- ----- -----
@@ -99,7 +92,7 @@ const $message = inputById('$message');
 
 
 
-function addMessage(m: Message) {
+function addMessage(m: { name: string, message: string }) {
 	const el = document.createElement('div');
 	el.innerHTML = `<b>${m.name}</b>: ${m.message}`;
 	$history.appendChild(el);
@@ -109,8 +102,8 @@ function renderState() {
 	$history.textContent = '';
 	for (const s of syncedState.messages) {
 		addMessage({
-			name: 'Unknown',
-			message: s,
+			name: syncedState.players.get(s.authorId)?.username || '?Err?',
+			message: s.text,
 		});
 	}
 }
@@ -133,7 +126,7 @@ socket.onerror = e => {
 	console.warn(e);
 };
 socket.onmessage = e => {
-	const command = JSON.parse(e.data) as Commands.ClientCommand;
+	const command = deserialize<Commands.ClientCommand>(e.data);
 
 	switch (command.type) { 
 		case Commands.ClientCommandType.SetSyncedState:
@@ -142,7 +135,6 @@ socket.onmessage = e => {
 			break;
 
 		case Commands.ClientCommandType.ConfirmSign:
-			// TODO: save id and token
 			playerId = command.id;
 			let token = command.token;
 			saveString('token', token);
@@ -158,7 +150,7 @@ socket.onmessage = e => {
 		case Commands.ClientCommandType.Perform:
 			const action = command.action;
 			console.log('Performing action:', action);
-			if (performOne(syncedState, action))
+			if (performOneClient(syncedState, action))
 				renderState();
 			break;
 
@@ -169,8 +161,13 @@ socket.onmessage = e => {
 
 $messageForm.onsubmit = (e: Event) => {
 	e.preventDefault();
-	sendAction(Actions.addMessage($message.value));
-	$message.value = '';
+
+	if (playerId == null) {
+		console.warn("playerId == null - this shouldn't happen!");
+	} else {
+		sendAction(Actions.addMessage(playerId, $message.value));
+		$message.value = '';
+	}
 };
 
 export {};

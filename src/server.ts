@@ -8,51 +8,23 @@ import {
 import { existsSync, ensureFileSync } from "https://deno.land/std@0.87.0/fs/mod.ts";
 import { v4 } from "https://deno.land/std@0.87.0/uuid/mod.ts";
 import { createHash } from "https://deno.land/std@0.87.0/hash/mod.ts";
+// ^^^^^ ----- Library imports ----- ^^^^^
 
+import { serialize, deserialize } from './serialization.ts';
 import {
-	WebSocketPort, WebSocketEndpoint,
-	SyncedStateEndpoint
+	WebSocketPort, WebSocketEndpoint
 } from './info.ts';
 import { assertNever } from './common.ts';
-import { EmptySyncedState, SyncedState } from './logic.ts';
+import { EmptySyncedState, SyncedState, performOneServer, ServerId } from './logic.ts';
 
 import * as Commands from './commands.ts';
 import * as Actions from './actions.ts';
-import { performOne } from './logic.ts';
+
+// ----- ----- ----- Logging ----- ----- -----
 
 const log = console.log;
 const logError = console.error;
 const logInfo = console.info;
-
-
-
-// ----- ----- ----- Serialization ----- ----- -----
-
-function replacer(key: string, value: any) {
-	if (value instanceof Map) {
-		return {
-			dataType: 'Map',
-			value: [...value.entries()], // or with spread: value: [...value]
-		};
-	} else {
-		return value;
-	}
-}
-function reviver(key: string, value: any) {
-	if (typeof value === 'object' && value !== null) {
-		if (value.dataType === 'Map') {
-			return new Map(value.value);
-		}
-	}
-	return value;
-}
-
-function serialize(obj: any) {
-	return JSON.stringify(obj, replacer);
-}
-function deserialize<T>(s: string): T {
-	return JSON.parse(s, reviver) as T;
-}
 
 // ----- ----- ----- Server state stuff ----- ----- -----
 
@@ -116,7 +88,11 @@ try {
 
 setInterval(saveServerState, 5000);
 setInterval(
-	() => saveServerState(new Date().toLocaleString('sv-SE').replace(/:/g, '-')),
+	() => saveServerState(
+		// Get datetime of format: 2021-02-17 21-36-00
+		// new Date().toLocaleString('sv-SE').replace(/:/g, '-') - works in the browser, but now here
+		new Date().toJSON().split('.')[0].replace('T', ' ').replace(/:/g, '-')
+	),
 	30 * 60 * 1000
 );
 
@@ -124,15 +100,6 @@ let nextPlayerId =
 	playersInfo.size == 0
 		? 1
 		: 1 + Math.max(...[...playersInfo.values()].map(info => info.id));
-/*
-function clearServerState() {
-	syncedState = {
-		messages: []
-	};
-}
-clearServerState();
-*/
-
 
 // ----- ----- ----- Network stuff ----- ----- -----
 
@@ -143,7 +110,7 @@ function sendString(sock: WebSocket, s: string) {
 	sock.send(s);
 }
 function sendCommand(sock: WebSocket, command: Commands.ClientCommand) {
-	const commandString = JSON.stringify(command);
+	const commandString = serialize(command);
 	sendString(sock, commandString);
 }
 
@@ -163,7 +130,7 @@ function broadcastString(s: string) {
 	}
 }
 function broadcastCommand(command: Commands.ClientCommand) {
-	const commandString = JSON.stringify(command);
+	const commandString = serialize(command);
 	broadcastString(commandString);
 }
 function broadcastAction(action: Actions.Action) {
@@ -187,14 +154,19 @@ async function handleWs(sock: WebSocket) {
 				log("ws:Text", ev);
 				//await sock.send(ev);
 
-				const command = JSON.parse(ev) as Commands.ServerCommand;
+				const command = deserialize<Commands.ServerCommand>(ev);
 				switch (command.type) {
 					case Commands.ServerCommandType.Perform:
-						const action = command.action;
-						if (performOne(syncedState, action))
-							broadcastAction(action);
+						if (playerId == null) {
+							logError(`Command from a not-logged-in user: ${ev}`);
+							// TODO: signal client browser to log-in or reload the page
+						}
+						else {
+							const action = command.action;
+							if (performOneServer(syncedState, action, playerId))
+								broadcastAction(action);
+						}
 						break;
-
 
 					case Commands.ServerCommandType.SignWithCredentials: {
 						let username = command.username.trim();
@@ -252,7 +224,10 @@ async function handleWs(sock: WebSocket) {
 							const newToken = v4.generate();
 							tokens.set(newToken, playerId);
 
-							// TODO: perform player creation action?
+							let action = Actions.createPlayer(playerId, username);
+							if (performOneServer(syncedState, action, ServerId))
+								broadcastAction(action);
+								
 							sendCommand(sock, Commands.confirmSign(playerId, newToken));
 						}
 						break;
@@ -312,12 +287,6 @@ for await (const req of serve(`:${port}`)) {
 				body: `Page was loaded ${pageLoads++} times since reload\nAnd your user agent is: ${userAgent}`
 			});
 			break;
-		case `/${SyncedStateEndpoint}`:
-			req.respond({
-				headers: allowOriginHeaders,
-				body: JSON.stringify(syncedState),
-			});
-			break;
 
 		// TODO: disable this on production server for security
 		case '/players':
@@ -331,6 +300,14 @@ for await (const req of serve(`:${port}`)) {
 				headers: jsonHeaders,
 				body: JSON.stringify(Object.fromEntries(tokens)),
 			})
+			break;
+		// The state is public, but normally received via WebSocket
+		// This api is for development convenience
+		case '/state':
+			req.respond({
+				headers: allowOriginHeaders,
+				body: serialize(syncedState),
+			});
 			break;
 
 		case '/favicon.ico':

@@ -38,6 +38,15 @@ clearServerState();
 const clients: Map<string, WebSocket> = new Map<string, WebSocket>();
 const history: Message[] = [];
 
+// TODO: think through error handling
+function sendString(sock: WebSocket, s: string) {
+	sock.send(s);
+}
+function sendCommand(sock: WebSocket, command: Commands.ClientCommand) {
+	const commandString = JSON.stringify(command);
+	sendString(sock, commandString);
+}
+
 function broadcastString(s: string) {
 	log('clients map:', clients);
 
@@ -53,11 +62,13 @@ function broadcastString(s: string) {
 		}
 	}
 }
-
-function broadcastAction(action: Actions.Action) {
-	const command = Commands.clientPerform(action);
+function broadcastCommand(command: Commands.ClientCommand) {
 	const commandString = JSON.stringify(command);
 	broadcastString(commandString);
+}
+function broadcastAction(action: Actions.Action) {
+	const command = Commands.clientPerform(action);
+	broadcastCommand(command);
 }
 
 async function handleWs(sock: WebSocket) {	
@@ -65,6 +76,8 @@ async function handleWs(sock: WebSocket) {
 	log("socket connected with uuid:", uuid);
 
 	clients.set(uuid, sock);
+
+	sendCommand(sock, Commands.setSyncedState(syncedState));
 
 	try {
 		for await (const ev of sock) {

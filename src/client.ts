@@ -60,6 +60,8 @@ socket.onmessage = e => {
 
 	switch (command.type) { 
 		case Commands.ClientCommandType.SetSyncedState:
+			syncedState = command.state;
+			renderState();
 			break;
 
 		case Commands.ClientCommandType.ConfirmSign:
@@ -82,24 +84,8 @@ socket.onmessage = e => {
 
 $messageForm.onsubmit = (e: Event) => {
 	e.preventDefault();
-	
-	const mes: Message = {
-		name: $name.value,
-		message: $message.value
-	};
-	console.log('Submitting:', mes);
-
 	sendAction(Actions.addMessage($message.value));
-	
-	//socket.send(JSON.stringify(mes));
 	$message.value = '';
 };
-
-async function loadInitialState() {
-	const res = await fetch(`http://${host}/${SyncedStateEndpoint}`);
-	syncedState = await res.json() as SyncedState;
-	renderState();
-};
-loadInitialState();
 
 export {};

@@ -34,18 +34,18 @@ export type CommandServerPerform = {
 
 // ----- ----- ----- Server Command Creators ----- ----- -----
 
-export const signWithCredentials = (username: string, password: string) => ({
+export const signWithCredentials = (username: string, password: string): CommandSignWithCredentials => ({
 	type: ServerCommandType.SignWithCredentials,
 	username,
 	password,
 });
 
-export const signWithToken = (token: string) => ({
+export const signWithToken = (token: string): CommandSignWithToken => ({
 	type: ServerCommandType.SignWithToken,
 	token,
 });
 
-export const register = (username: string, password: string) => ({
+export const register = (username: string, password: string): CommandRegister => ({
 	type: ServerCommandType.Register,
 	username,
 	password,
@@ -65,7 +65,7 @@ export type ServerCommand =
 
 
 
-	
+
 // -----------------------------------------------
 // Client side
 
@@ -101,23 +101,23 @@ export type CommandClientPerform = {
 
 // ----- ----- ----- Client Command Creators ----- ----- -----
 
-export const setSyncedState = (newSyncedState: SyncedState) => ({
+export const setSyncedState = (newSyncedState: SyncedState): CommandSetSyncedState => ({
 	type: ClientCommandType.SetSyncedState,
 	state: newSyncedState,
 });
 
-export const confirmSign = (id: number, token: string) => ({
+export const confirmSign = (id: number, token: string): CommandConfirmSign => ({
 	type: ClientCommandType.ConfirmSign,
 	id,
 	token,
 });
 
-export const failedSign = (errorMessage: string) => ({
+export const failedSign = (errorMessage: string): CommandFailedSign => ({
 	type: ClientCommandType.FailedSign,
 	errorMessage,
 });
 
-export const clientPerform = (action: Actions.Action) => ({
+export const clientPerform = (action: Actions.Action): CommandClientPerform => ({
 	type: ClientCommandType.Perform,
 	action,
 });

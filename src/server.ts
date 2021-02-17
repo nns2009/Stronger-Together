@@ -11,11 +11,13 @@ import {
 	WebSocketPort, WebSocketEndpoint,
 	HistoryEndpoint, SyncedStateEndpoint
 } from './info.ts';
-import { Message } from './common.ts';
+import { assertNever, Message } from './common.ts';
 import { EmptySyncedState, SyncedState } from './logic.ts';
 
+import * as Commands from './commands.ts';
 import * as Actions from './actions.ts';
 import { performOne } from './logic.ts';
+import { assert } from "https://deno.land/std@0.87.0/_util/assert.ts";
 
 const log = console.log;
 const logError = console.error;
@@ -36,7 +38,7 @@ clearServerState();
 const clients: Map<string, WebSocket> = new Map<string, WebSocket>();
 const history: Message[] = [];
 
-function broadcast(s: string) {
+function broadcastString(s: string) {
 	log('clients map:', clients);
 
 	for (const [uuid, sock] of clients) {
@@ -52,6 +54,12 @@ function broadcast(s: string) {
 	}
 }
 
+function broadcastAction(action: Actions.Action) {
+	const command = Commands.clientPerform(action);
+	const commandString = JSON.stringify(command);
+	broadcastString(commandString);
+}
+
 async function handleWs(sock: WebSocket) {	
 	const uuid = v4.generate();
 	log("socket connected with uuid:", uuid);
@@ -64,9 +72,26 @@ async function handleWs(sock: WebSocket) {
 				log("ws:Text", ev);
 				//await sock.send(ev);
 
-				const action = JSON.parse(ev) as Actions.Action;
-				if (performOne(syncedState, action))
-					broadcast(JSON.stringify(action));
+				const command = JSON.parse(ev) as Commands.ServerCommand;
+				switch (command.type) {
+					case Commands.ServerCommandType.SignWithCredentials:
+						break;
+					
+					case Commands.ServerCommandType.SignWithToken:
+						break;
+
+					case Commands.ServerCommandType.Register:
+						break;
+
+					case Commands.ServerCommandType.Perform:
+						const action = command.action;
+						if (performOne(syncedState, action))
+							broadcastAction(action);
+						break;
+
+					default:
+						assertNever(command);
+				}
 			}
 			else if (isWebSocketPingEvent(ev)) {
 				const [, body] = ev;

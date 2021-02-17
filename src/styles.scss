@@ -1,6 +1,72 @@
 $primary-color: white;
 $bg: green;
+
+html {
+	font-family: Calibri, 'Gill Sans', 'Gill Sans MT', 'Trebuchet MS', sans-serif;
+}
+
+body {
+	border: solid 1px black;
+	background-color: lightgreen;
+}
+
+.modalContainer {
+	position: absolute;
+	left: 0;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	backdrop-filter: blur(2px);
+
+	display: grid;
+	place-items: center;
+}
+
+// TODO: think through responsive sizing
+.signForm {
+	width: 490px;
+	padding: 2em;
+	border-radius: 8px;
+	background-color: white;
+	font-size: x-large;
+}
+
+.gap {
+	height: 1em;
+}
+
+.commentText {
+	font-size: large;
+	color: grey;
+}
+.commentError {
+	font-size: large;
+	color: red;
+}
+
+.signFormInput {
+	width: 100%;
+	padding: 0.35em;
+	font-size: x-large;
+}
+.signFormInput:disabled {
+	background-color: lightgray;
+}
+.signFormSubmit {
+	width: 45%;
+	border: solid 1px gray;
+	padding: 0.45em;
+	font-size: x-large;
+}
+.signFormSubmit:enabled:hover {
+	background-color: bisque;
+}
+
+
+
+
 h1 {
-  color: $primary-color;
-  background-color: $bg;
+	color: $primary-color;
+	background-color: $bg;
 }

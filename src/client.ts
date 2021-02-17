@@ -9,15 +9,9 @@ import { EmptySyncedState, performOne, SyncedState } from "./logic.ts";
 
 const host = `localhost:${WebSocketPort}`;
 
-const $history = document.getElementById('$history') as HTMLElement;
-const $messageForm = document.getElementById('$messageForm') as HTMLElement;
-const $name = document.getElementById('$name') as HTMLInputElement;
-const $message = document.getElementById('$message') as HTMLInputElement;
-
-
 let syncedState: SyncedState = EmptySyncedState;
 
-
+// ----- ----- ----- Networking ----- ----- -----
 function sendString(s: string) {
 	socket.send(s);
 }
@@ -29,6 +23,68 @@ function sendAction(action: Actions.Action) {
 	const command = Commands.serverPerform(action);
 	sendCommand(command);
 }
+
+
+function tagById<T>(id: string) {
+	return document.getElementById(id) as T;
+}
+function elementById(id: string) {
+	return tagById<HTMLElement>(id);
+}
+function inputById(id: string) {
+	return tagById<HTMLInputElement>(id);
+}
+
+// ----- ----- ----- Log in form ----- ----- -----
+const $signFormModalContainer = elementById('$signFormModalContainer');
+const $username = inputById('$username');
+const $password = inputById('$password');
+const $register = inputById('$register');
+const $logIn = inputById('$logIn');
+const $commentError = elementById('$commentError');
+
+enum SignState {
+	None = 'none',
+	Trying = 'trying',
+	Signed = 'signed',
+};
+
+let signState = SignState.None;
+let signError = '';
+
+function renderSignForm(state: SignState, error: string) {
+	signState = state;
+	signError = error;
+
+	$signFormModalContainer.style.display =
+		signState != SignState.Signed
+			? ''
+			: 'none';
+
+	$username.disabled = $password.disabled = $register.disabled = $logIn.disabled =
+		signState == SignState.Trying;
+
+	$commentError.innerHTML = signError || '&nbsp;';
+}
+
+$register.onclick = (e: Event) => {
+	e.preventDefault();
+	renderSignForm(SignState.Trying, '');
+	sendCommand(Commands.register($username.value, $password.value));
+};
+$logIn.onclick = (e: Event) => {
+	e.preventDefault();
+	renderSignForm(SignState.Trying, '');
+	sendCommand(Commands.signWithCredentials($username.value, $password.value));
+};
+
+// ----- ----- ----- In game ----- ----- -----
+const $history = elementById('$history');
+const $messageForm = elementById('$messageForm');
+const $name = inputById('$name');
+const $message = inputById('$message');
+
+
 
 
 function addMessage(m: Message) {
@@ -65,9 +121,12 @@ socket.onmessage = e => {
 			break;
 
 		case Commands.ClientCommandType.ConfirmSign:
+			// TODO: save id and token
+			renderSignForm(SignState.Signed, '');
 			break;
 
 		case Commands.ClientCommandType.FailedSign:
+			renderSignForm(SignState.None, command.errorMessage);
 			break;
 
 		case Commands.ClientCommandType.Perform:

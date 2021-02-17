@@ -6,9 +6,9 @@
 		<link rel="stylesheet" href="styles.scss" />
 	</head>
 	<body>
-		<div class="modalContainer">
+		<div class="modalContainer" id="$signFormModalContainer">
 			<div class="signForm">
-				<form onSubmit={submit}>
+				<form>
 					<div>
 						Welcome to Stronger Together!
 						<div class="commentText">
@@ -19,11 +19,11 @@
 					</div>
 	
 					<div>Username</div>
-					<div><input class="signFormInput" disable={tryingToSign} /></div>
+					<div><input class="signFormInput" id="$username"/></div>
 					<div class="gap"></div>
 	
 					<div>Password</div>
-					<div><input class="signFormInput" disable={tryingToSign} /></div>
+					<div><input class="signFormInput" id="$password"/></div>
 
 					<div class="commentText">
 						Don't use your real password: it is not hashed and connection is not encrypted
@@ -31,11 +31,11 @@
 					<div class="gap"></div>
 	
 					<div>
-						<input class="signFormSubmit" type="submit" value="Register" disable={tryingToSign} />
-						<input class="signFormSubmit" type="submit" value="Log In" disable={tryingToSign} />
+						<input class="signFormSubmit" id="$register" type="submit" value="Register" />
+						<input class="signFormSubmit" id="$logIn" type="submit" value="Log In" />
 					</div>
 
-					<div class="commentError">{signError}</div>
+					<div class="commentError" id="$commentError"></div>
 				</form>
 			</div>
 		</div>

@@ -6,25 +6,49 @@ import {
 	WebSocket,
 } from "https://deno.land/std@0.87.0/ws/mod.ts";
 import { v4 } from "https://deno.land/std@0.87.0/uuid/mod.ts";
+import { createHash } from "https://deno.land/std@0.87.0/hash/mod.ts";
 
 import {
 	WebSocketPort, WebSocketEndpoint,
-	HistoryEndpoint, SyncedStateEndpoint
+	SyncedStateEndpoint
 } from './info.ts';
-import { assertNever, Message } from './common.ts';
+import { assertNever } from './common.ts';
 import { EmptySyncedState, SyncedState } from './logic.ts';
 
 import * as Commands from './commands.ts';
 import * as Actions from './actions.ts';
 import { performOne } from './logic.ts';
-import { assert } from "https://deno.land/std@0.87.0/_util/assert.ts";
 
 const log = console.log;
 const logError = console.error;
 const logInfo = console.info;
 
 
+
+
+
+// ----- ----- ----- Log in stuff ----- ----- -----
+
+function hash(s: string): string {
+	const h = createHash('sha3-256');
+	h.update(s);
+	return h.toString();
+}
+
+type PlayerInfo = {
+	id: number,
+	password: string,
+	salt: string,
+};
+
+let playersInfo = new Map<string, PlayerInfo>();
+let tokens = new Map<string, number>();
 let syncedState: SyncedState = EmptySyncedState;
+
+let nextPlayerId =
+	playersInfo.size == 0
+		? 1
+		: 1 + Math.max(...[...playersInfo.values()].map(info => info.id));
 /*
 function clearServerState() {
 	syncedState = {
@@ -35,8 +59,9 @@ clearServerState();
 */
 
 
+// ----- ----- ----- Network stuff ----- ----- -----
+
 const clients: Map<string, WebSocket> = new Map<string, WebSocket>();
-const history: Message[] = [];
 
 // TODO: think through error handling
 function sendString(sock: WebSocket, s: string) {
@@ -77,6 +102,8 @@ async function handleWs(sock: WebSocket) {
 
 	clients.set(uuid, sock);
 
+	let playerId: number | null = null;
+
 	sendCommand(sock, Commands.setSyncedState(syncedState));
 
 	try {
@@ -87,20 +114,74 @@ async function handleWs(sock: WebSocket) {
 
 				const command = JSON.parse(ev) as Commands.ServerCommand;
 				switch (command.type) {
-					case Commands.ServerCommandType.SignWithCredentials:
-						break;
-					
-					case Commands.ServerCommandType.SignWithToken:
-						break;
-
-					case Commands.ServerCommandType.Register:
-						break;
-
 					case Commands.ServerCommandType.Perform:
 						const action = command.action;
 						if (performOne(syncedState, action))
 							broadcastAction(action);
 						break;
+
+
+					case Commands.ServerCommandType.SignWithCredentials: {
+						let username = command.username.trim();
+						let password = command.password;
+
+						const info = playersInfo.get(username);
+
+						if (!info)
+							sendCommand(sock, Commands.failedSign("Player with this username doesn't exist"));
+						else if (info.password != hash(info.salt + password))
+							sendCommand(sock, Commands.failedSign('Wrong password!'));
+						else {
+							playerId = info.id;
+
+							const newToken = v4.generate();
+							tokens.set(newToken, playerId);
+
+							sendCommand(sock, Commands.confirmSign(playerId, newToken));
+						}
+						break;
+					}
+					
+					case Commands.ServerCommandType.SignWithToken: {
+						const token = command.token;
+						const id = tokens.get(token);
+
+						if (id == undefined)
+							sendCommand(sock, Commands.failedSign('Invalid token!'));
+						else {
+							playerId = id;
+							sendCommand(sock, Commands.confirmSign(id, token));
+						}
+						break;
+					}
+
+					case Commands.ServerCommandType.Register: {
+						let username = command.username.trim();
+						let password = command.password;
+						if (playersInfo.has(username))
+							sendCommand(sock, Commands.failedSign('User with this username already exists'));
+						else if (!(3 <= username.length && username.length <= 50))
+							sendCommand(sock, Commands.failedSign('Username length should be between 3 and 50!'));
+						else if (!(4 <= password.length && password.length <= 50))
+							sendCommand(sock, Commands.failedSign('Password length should be between 4 and 50!'));
+						else {
+							const newId = nextPlayerId++;
+							const salt = v4.generate();
+							playersInfo.set(username, {
+								id: newId,
+								salt,
+								password: hash(salt + password),
+							});
+							playerId = newId;
+
+							const newToken = v4.generate();
+							tokens.set(newToken, playerId);
+
+							// TODO: perform player creation action?
+							sendCommand(sock, Commands.confirmSign(playerId, newToken));
+						}
+						break;
+					}
 
 					default:
 						assertNever(command);
@@ -128,6 +209,8 @@ async function handleWs(sock: WebSocket) {
 	}
 }
 
+// ----- ----- ----- HTTP Server ----- ----- -----
+
 let pageLoads = 0;
 
 const port = WebSocketPort;
@@ -150,18 +233,25 @@ for await (const req of serve(`:${port}`)) {
 				body: `Page was loaded ${pageLoads++} times since reload\nAnd your user agent is: ${userAgent}`
 			});
 			break;
-		case `/${HistoryEndpoint}`:
-			req.respond({
-				headers: allowOriginHeaders,
-				body: JSON.stringify(history),
-			});
-			break;
 		case `/${SyncedStateEndpoint}`:
 			req.respond({
 				headers: allowOriginHeaders,
 				body: JSON.stringify(syncedState),
 			});
 			break;
+
+		// TODO: disable this on production server for security
+		case '/players':
+			req.respond({
+				body: JSON.stringify(Object.fromEntries(playersInfo)),
+			});
+			break;
+		case '/tokens':
+			req.respond({
+				body: JSON.stringify(Object.fromEntries(tokens)),
+			})
+			break;
+
 		case '/favicon.ico':
 			req.respond({
 				body: 'No icon, sorry'

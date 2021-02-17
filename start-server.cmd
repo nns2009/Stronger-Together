@@ -1,1 +1,1 @@
-deno run --unstable --watch --allow-net src/server.ts
+deno run --unstable --watch --allow-net --allow-write=./data --allow-read=./data src/server.ts

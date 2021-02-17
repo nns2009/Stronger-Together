@@ -5,6 +5,7 @@ import {
 	isWebSocketPingEvent,
 	WebSocket,
 } from "https://deno.land/std@0.87.0/ws/mod.ts";
+import { existsSync, ensureFileSync } from "https://deno.land/std@0.87.0/fs/mod.ts";
 import { v4 } from "https://deno.land/std@0.87.0/uuid/mod.ts";
 import { createHash } from "https://deno.land/std@0.87.0/hash/mod.ts";
 
@@ -25,9 +26,35 @@ const logInfo = console.info;
 
 
 
+// ----- ----- ----- Serialization ----- ----- -----
 
+function replacer(key: string, value: any) {
+	if (value instanceof Map) {
+		return {
+			dataType: 'Map',
+			value: [...value.entries()], // or with spread: value: [...value]
+		};
+	} else {
+		return value;
+	}
+}
+function reviver(key: string, value: any) {
+	if (typeof value === 'object' && value !== null) {
+		if (value.dataType === 'Map') {
+			return new Map(value.value);
+		}
+	}
+	return value;
+}
 
-// ----- ----- ----- Log in stuff ----- ----- -----
+function serialize(obj: any) {
+	return JSON.stringify(obj, replacer);
+}
+function deserialize<T>(s: string): T {
+	return JSON.parse(s, reviver) as T;
+}
+
+// ----- ----- ----- Server state stuff ----- ----- -----
 
 function hash(s: string): string {
 	const h = createHash('sha3-256');
@@ -41,9 +68,57 @@ type PlayerInfo = {
 	salt: string,
 };
 
+type ServerState = {
+	playersInfo: Map<string, PlayerInfo>,
+	tokens: Map<string, number>,
+	syncedState: SyncedState,
+};
+
 let playersInfo = new Map<string, PlayerInfo>();
 let tokens = new Map<string, number>();
 let syncedState: SyncedState = EmptySyncedState;
+
+// ----- ----- ----- Saving and Loading server state ----- ----- -----
+
+function loadServerState() {
+	const filename = `./data/all.json`;
+	if (!existsSync(filename))
+		return;
+
+	const dataString = Deno.readTextFileSync(filename);
+	const data = deserialize<ServerState>(dataString);
+	
+	playersInfo = data.playersInfo;
+	tokens = data.tokens;
+	syncedState = data.syncedState;
+}
+const saveServerState = (suffix: string = '') => {
+	const data: ServerState = {
+		playersInfo,
+		tokens,
+		syncedState
+	};
+	const dataString = serialize(data);
+
+	try {
+		const filename = `./data/all${suffix}.json`;
+		ensureFileSync(filename);
+		Deno.writeTextFileSync(filename, dataString);
+	} catch (error) {
+		logError(`Couldn't save file: ${error}`);
+	}
+};
+try {
+	loadServerState();
+} catch (error) {
+	logError(`Error while loading server state: ${error}`);
+}
+
+setInterval(saveServerState, 5000);
+setInterval(
+	() => saveServerState(new Date().toLocaleString('sv-SE').replace(/:/g, '-')),
+	30 * 60 * 1000
+);
 
 let nextPlayerId =
 	playersInfo.size == 0
@@ -166,7 +241,7 @@ async function handleWs(sock: WebSocket) {
 							sendCommand(sock, Commands.failedSign('Password length should be between 4 and 50!'));
 						else {
 							const newId = nextPlayerId++;
-							const salt = v4.generate();
+							const salt = v4.generate(); // TODO: is this random enough?
 							playersInfo.set(username, {
 								id: newId,
 								salt,

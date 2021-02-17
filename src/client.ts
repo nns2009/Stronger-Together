@@ -9,6 +9,7 @@ import { EmptySyncedState, performOne, SyncedState } from "./logic.ts";
 
 const host = `localhost:${WebSocketPort}`;
 
+let playerId: number | null = null;
 let syncedState: SyncedState = EmptySyncedState;
 
 // ----- ----- ----- Networking ----- ----- -----
@@ -24,6 +25,7 @@ function sendAction(action: Actions.Action) {
 	sendCommand(command);
 }
 
+// ----- ----- ----- HTML function ----- ----- -----
 
 function tagById<T>(id: string) {
 	return document.getElementById(id) as T;
@@ -33,6 +35,14 @@ function elementById(id: string) {
 }
 function inputById(id: string) {
 	return tagById<HTMLInputElement>(id);
+}
+
+// ----- ----- ----- Storage ----- ----- -----
+function saveString(key: string, value: string) {
+	localStorage.setItem(key, value);
+}
+function loadString(key: string): string | undefined {
+	return localStorage.getItem(key);
 }
 
 // ----- ----- ----- Log in form ----- ----- -----
@@ -78,6 +88,8 @@ $logIn.onclick = (e: Event) => {
 	sendCommand(Commands.signWithCredentials($username.value, $password.value));
 };
 
+renderSignForm(SignState.Trying, '');
+
 // ----- ----- ----- In game ----- ----- -----
 const $history = elementById('$history');
 const $messageForm = elementById('$messageForm');
@@ -106,6 +118,15 @@ function renderState() {
 let socket = new WebSocket(`ws://${host}/${WebSocketEndpoint}`);
 socket.onopen = e => {
 	console.info('Connected!');
+
+	let token = loadString('token');
+	if (token) {
+		console.info(`Attempting to log in by token: ${token}`);
+		renderSignForm(SignState.Trying, '');
+		sendCommand(Commands.signWithToken(token));
+	} else {
+		renderSignForm(SignState.None, '');
+	}
 };
 socket.onerror = e => {
 	console.log('Error connecting:');
@@ -122,6 +143,11 @@ socket.onmessage = e => {
 
 		case Commands.ClientCommandType.ConfirmSign:
 			// TODO: save id and token
+			playerId = command.id;
+			let token = command.token;
+			saveString('token', token);
+			console.info(`Sign in successfull! Token: ${token}`);
+
 			renderSignForm(SignState.Signed, '');
 			break;
 

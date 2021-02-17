@@ -218,6 +218,10 @@ log(`websocket server is running on :${port}`);
 
 const allowOriginHeaders = new Headers();
 allowOriginHeaders.set("Access-Control-Allow-Origin", "*");
+allowOriginHeaders.set('Content-Type', 'application/json');
+
+const jsonHeaders = new Headers();
+jsonHeaders.set('Content-Type', 'application/json');
  
 for await (const req of serve(`:${port}`)) {
 	const { conn, r: bufReader, w: bufWriter, headers, url } = req;
@@ -243,11 +247,13 @@ for await (const req of serve(`:${port}`)) {
 		// TODO: disable this on production server for security
 		case '/players':
 			req.respond({
+				headers: jsonHeaders,
 				body: JSON.stringify(Object.fromEntries(playersInfo)),
 			});
 			break;
 		case '/tokens':
 			req.respond({
+				headers: jsonHeaders,
 				body: JSON.stringify(Object.fromEntries(tokens)),
 			})
 			break;

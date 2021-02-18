@@ -1,3 +1,4 @@
+// ----- ----- ----- Library imports ----- ----- -----
 import { serve } from "https://deno.land/std@0.87.0/http/server.ts";
 import {
 	acceptWebSocket,
@@ -8,17 +9,20 @@ import {
 import { existsSync, ensureFileSync } from "https://deno.land/std@0.87.0/fs/mod.ts";
 import { v4 } from "https://deno.land/std@0.87.0/uuid/mod.ts";
 import { createHash } from "https://deno.land/std@0.87.0/hash/mod.ts";
-// ^^^^^ ----- Library imports ----- ^^^^^
 
+// ----- ----- ----- More or less common stuff ----- ----- -----
 import { serialize, deserialize } from './serialization.ts';
 import {
 	WebSocketPort, WebSocketEndpoint
 } from './info.ts';
 import { assertNever } from './common.ts';
-import { EmptySyncedState, SyncedState, performOneServer, ServerId } from './logic.ts';
+import { random, vec } from "./math.ts";
 
+// ----- ----- ----- Game specific imports ----- ----- -----
+import { EmptySyncedState, SyncedState, performOneServer, performManyServer, ServerId, HumanTeam } from './logic.ts';
 import * as Commands from './commands.ts';
 import * as Actions from './actions.ts';
+import * as Units from "./units.ts";
 
 // ----- ----- ----- Logging ----- ----- -----
 
@@ -101,6 +105,11 @@ let nextPlayerId =
 		? 1
 		: 1 + Math.max(...[...playersInfo.values()].map(info => info.id));
 
+let nextUnitId = 
+	syncedState.units.size == 0
+		? 1
+		: 1 + Math.max(...syncedState.units.keys());
+
 // ----- ----- ----- Network stuff ----- ----- -----
 
 const clients: Map<string, WebSocket> = new Map<string, WebSocket>();
@@ -135,6 +144,10 @@ function broadcastCommand(command: Commands.ClientCommand) {
 }
 function broadcastAction(action: Actions.Action) {
 	const command = Commands.clientPerform(action);
+	broadcastCommand(command);
+}
+function broadcastActionList(actions: Actions.Action[]) {
+	const command = Commands.clientPerformMany(actions);
 	broadcastCommand(command);
 }
 
@@ -224,10 +237,23 @@ async function handleWs(sock: WebSocket) {
 							const newToken = v4.generate();
 							tokens.set(newToken, playerId);
 
-							let action = Actions.createPlayer(playerId, username);
-							if (performOneServer(syncedState, action, ServerId))
-								broadcastAction(action);
-								
+							let hero: Units.Unit = Units.unit(
+								Units.Class.Warrior,
+								HumanTeam,
+								vec(random(-10, 10), random(-10, 10))
+							);
+							let unitId = nextUnitId++;
+
+							let actionUnit = Actions.createUnit(unitId, hero);
+							let actionPlayer = Actions.createPlayer(playerId, username, unitId);
+							let actions = [actionUnit, actionPlayer];
+
+							if (performManyServer(syncedState, actions, ServerId))
+								broadcastActionList(actions); // TODO: what if some of the actions were performed while others were not? - this will cause the server to perform some of actions, none of which were broadcasted -> dis-synchronization
+							else {
+								logError(`Creating new player and corresponding unit failed. This shouldn't happen. actions: ${serialize(actions)}`);
+							}
+
 							sendCommand(sock, Commands.confirmSign(playerId, newToken));
 						}
 						break;

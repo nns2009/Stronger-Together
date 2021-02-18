@@ -1,6 +1,10 @@
 import * as Actions from './actions.ts';
 import { SyncedState } from './logic.ts';
 
+// TODO: Client and Server logically share the same "Perform" command,
+// but client and server versions had to be implemented as two separate commands
+// because of types. What can be done about it? 
+
 export enum ServerCommandType {
 	SignWithCredentials = 'signWithCredentials',
 	SignWithToken = 'signWithToken',
@@ -74,6 +78,7 @@ export enum ClientCommandType {
 	ConfirmSign = 'confirmSign',
 	FailedSign = 'failedSign',
 	Perform = 'do',
+	PerformMany = 'dos',
 }
 
 // ----- ----- ----- Client Command Types ----- ----- -----
@@ -99,6 +104,11 @@ export type CommandClientPerform = {
 	action: Actions.Action,
 }
 
+export type CommandClientPerformMany = {
+	type: ClientCommandType.PerformMany,
+	actions: Actions.Action[],
+}
+
 // ----- ----- ----- Client Command Creators ----- ----- -----
 
 export const setSyncedState = (newSyncedState: SyncedState): CommandSetSyncedState => ({
@@ -122,6 +132,11 @@ export const clientPerform = (action: Actions.Action): CommandClientPerform => (
 	action,
 });
 
+export const clientPerformMany = (actions: Actions.Action[]): CommandClientPerformMany => ({
+	type: ClientCommandType.PerformMany,
+	actions,
+});
+
 /*
 export type ClientCommand = 
 	ReturnType<typeof setSyncedState>
@@ -134,4 +149,5 @@ export type ClientCommand =
 	CommandSetSyncedState
 	| CommandConfirmSign
 	| CommandFailedSign
-	| CommandClientPerform;
+	| CommandClientPerform
+	| CommandClientPerformMany;

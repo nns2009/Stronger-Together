@@ -1,8 +1,14 @@
 
-interface Vector {
+
+export const random = (min: number, max: number) =>
+    min + Math.random() * (max - min);
+
+export type Vector = {
 	x: number,
 	y: number,
 }
+
+export const vec = (x: number, y: number): Vector => ({ x, y });
 
 export const sqr = (x: number) => x * x;
 

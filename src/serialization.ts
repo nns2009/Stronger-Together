@@ -1,3 +1,6 @@
+
+// Code from: https://stackoverflow.com/questions/29085197/how-do-you-json-stringify-an-es6-map
+
 function replacer(key: string, value: any) {
 	if (value instanceof Map) {
 		return {

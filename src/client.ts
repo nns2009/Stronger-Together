@@ -1,12 +1,17 @@
+// ----- ----- ----- More or less common stuff ----- ----- -----
 import { serialize, deserialize } from './serialization.ts';
 import { saveString, loadString } from './clientStorage.ts';
 import {
 	WebSocketPort, WebSocketEndpoint
 } from './info.ts';
 import { assertNever } from './common.ts';
+import { vec } from "./math.ts";
+
+// ----- ----- ----- Game specific imports ----- ----- -----
 import * as Commands from './commands.ts';
 import * as Actions from './actions.ts';
-import { EmptySyncedState, performOneClient, SyncedState } from "./logic.ts";
+import { EmptySyncedState, performManyClient, performOneClient, SyncedState, Player } from "./logic.ts";
+import * as Units from "./units.ts";
 
 const host = `localhost:${WebSocketPort}`;
 
@@ -83,13 +88,29 @@ $logIn.onclick = (e: Event) => {
 
 renderSignForm(SignState.Trying, '');
 
+// ----- ----- ----- Input ----- ----- -----
+const pressed = new Map<string, boolean>();
+onkeydown = e => {
+	pressed.set(e.key.toLowerCase(), true);
+	// console.log('d', e.key, e.keyCode);
+};
+onkeyup = e => {
+	pressed.set(e.key.toLowerCase(), false);
+	// console.log('u', e.key, e.keyCode);
+}
+
+const getKey = (char: string) => pressed.get(char) || false;
+const getKeyInt = (char: string) => getKey(char) ? 1 : 0;
+const getHorizontal = () => getKeyInt('d') - getKeyInt('a');
+const getVertical = () => getKeyInt('s') - getKeyInt('w');
+
 // ----- ----- ----- In game ----- ----- -----
 const $history = elementById('$history');
 const $messageForm = elementById('$messageForm');
-const $name = inputById('$name');
 const $message = inputById('$message');
 
-
+const $canvas = tagById<HTMLCanvasElement>('$canvas');
+const context = $canvas.getContext('2d') as CanvasRenderingContext2D; // Make type-checking exclude 'null' possibility
 
 
 function addMessage(m: { name: string, message: string }) {
@@ -107,6 +128,84 @@ function renderState() {
 		});
 	}
 }
+
+function drawCircle(x: number, y: number, radius: number, fillStyle: string) {
+	context.beginPath();
+	context.arc(x, y, radius, 0, 2 * Math.PI);
+	context.fillStyle = fillStyle;
+	context.fill();
+}
+
+let lastMsTime = 0;
+function frame(msTime: number) {
+	const deltaTime = (msTime - lastMsTime) / 1000;
+	lastMsTime = msTime;
+
+	if (playerId == null) {
+		requestAnimationFrame(frame);
+		return;
+	}
+
+	// ----- ----- ----- Update ----- ----- -----
+	const myPlayer = syncedState.players.get(playerId) as Player;
+	const myUnit = syncedState.units.get(myPlayer.controlledUnitId) as Units.Unit;
+	const myClas = Units.unitClassByName(myUnit.className);
+
+	const dx = getHorizontal() * myClas.movementSpeed * deltaTime;
+	const dy = getVertical() * myClas.movementSpeed * deltaTime;
+	if (dx != 0 || dy != 0) {
+		sendAction(Actions.unitSetPos(
+			myPlayer.controlledUnitId,
+			vec(myUnit.pos.x + dx, myUnit.pos.y + dy)
+		))
+		//myUnit.pos.x += dx;
+		//myUnit.pos.y += dy;
+	}
+
+	const w = $canvas.width;
+	const h = $canvas.height;
+
+	// ----- ----- ----- Drawing ----- ----- -----
+	// Clear canvas
+	context.resetTransform();
+	context.fillStyle = '#f6f6f6';
+	context.fillRect(0, 0, w, h);
+
+	context.translate(w / 2, h / 2);
+	context.scale(50, 50);
+
+	context.translate(-myUnit.pos.x, -myUnit.pos.y);
+
+	// ----- ----- ----- Debug display ----- ----- -----
+	const gridGap = 1;
+	const gridSpan = 20;
+	context.beginPath();
+	for (let i = -gridSpan; i <= gridSpan; i++) {
+		// Horizontal line
+		context.moveTo(-gridSpan * gridGap, i * gridGap);
+		context.lineTo(gridSpan * gridGap, i * gridGap);
+
+		// Vertical line
+		context.moveTo(i * gridGap, -gridSpan * gridGap);
+		context.lineTo(i * gridGap, gridSpan * gridGap);
+	}
+	context.lineWidth = 1 / 25;
+	context.strokeStyle = 'lightgray';
+	context.stroke();
+
+	drawCircle(0, 0, 0.1, 'red');
+
+	// ----- ----- ----- Game itself ----- ----- -----
+
+	for (const [id, u] of syncedState.units) {
+		drawCircle(u.pos.x, u.pos.y, 0.3, 'black');
+		if (id == myPlayer.controlledUnitId)
+			drawCircle(u.pos.x, u.pos.y, 0.1, 'yellow');
+	}
+
+	requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 
 let socket = new WebSocket(`ws://${host}/${WebSocketEndpoint}`);
 socket.onopen = e => {
@@ -132,6 +231,11 @@ socket.onmessage = e => {
 		case Commands.ClientCommandType.SetSyncedState:
 			syncedState = command.state;
 			renderState();
+			
+			{
+				const win: any = window; // Surpress TypeScript type warning
+				win.st = syncedState; // For easy access for debugging
+			}
 			break;
 
 		case Commands.ClientCommandType.ConfirmSign:
@@ -149,9 +253,15 @@ socket.onmessage = e => {
 
 		case Commands.ClientCommandType.Perform:
 			const action = command.action;
-			console.log('Performing action:', action);
+			//console.log('Performing action:', action);
 			if (performOneClient(syncedState, action))
-				renderState();
+				renderState(); // TODO: might not be necessary since canvas is redrawed every frame anyway
+			break;
+
+		case Commands.ClientCommandType.PerformMany:
+			const { actions } = command;
+			if (performManyClient(syncedState, actions))
+				renderState(); // TODO: might not be necessary since canvas is redrawed every frame anyway
 			break;
 
 		default:

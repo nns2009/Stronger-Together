@@ -1,13 +1,17 @@
 $primary-color: white;
 $bg: green;
 
+* {
+	box-sizing: border-box;
+}
+
 html {
 	font-family: Calibri, 'Gill Sans', 'Gill Sans MT', 'Trebuchet MS', sans-serif;
 }
 
 body {
 	border: solid 1px black;
-	background-color: lightgreen;
+	background-color: rgb(203, 250, 203);
 }
 
 .modalContainer {

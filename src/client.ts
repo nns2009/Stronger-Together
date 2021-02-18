@@ -6,6 +6,7 @@ import {
 } from './info.ts';
 import { assertNever } from './common.ts';
 import { vec } from "./math.ts";
+import { netFunctions } from './networking.ts';
 
 // ----- ----- ----- Game specific imports ----- ----- -----
 import * as Commands from './commands.ts';
@@ -19,17 +20,8 @@ let playerId: number | null = null;
 let syncedState: SyncedState = EmptySyncedState;
 
 // ----- ----- ----- Networking ----- ----- -----
-function sendString(s: string) {
-	socket.send(s);
-}
-function sendCommand(command: Commands.ServerCommand) {
-	const str = serialize(command);
-	sendString(str);
-}
-function sendAction(action: Actions.Action) {
-	const command = Commands.serverPerform(action);
-	sendCommand(command);
-}
+let socket = new WebSocket(`ws://${host}/${WebSocketEndpoint}`);
+const { sendString, sendCommand, sendAction } = netFunctions(socket);
 
 // ----- ----- ----- HTML function ----- ----- -----
 
@@ -207,7 +199,6 @@ function frame(msTime: number) {
 }
 requestAnimationFrame(frame);
 
-let socket = new WebSocket(`ws://${host}/${WebSocketEndpoint}`);
 socket.onopen = e => {
 	console.info('Connected!');
 

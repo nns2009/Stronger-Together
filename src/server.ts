@@ -124,7 +124,7 @@ function sendCommand(sock: WebSocket, command: Commands.ClientCommand) {
 }
 
 function broadcastString(s: string) {
-	log('clients map:', clients);
+	//log('clients map:', clients);
 
 	for (const [uuid, sock] of clients) {
 		// TODO: Use sock.isClosed ?
@@ -164,7 +164,7 @@ async function handleWs(sock: WebSocket) {
 	try {
 		for await (const ev of sock) {
 			if (typeof ev === "string") {
-				log("ws:Text", ev);
+				//log("ws:Text", ev);
 				//await sock.send(ev);
 
 				const command = deserialize<Commands.ServerCommand>(ev);
